@@ -13,13 +13,12 @@
 #define PATH_MAX 4096
 
 char *ROOT;
-void readfile(char* url, char** file);
+void readfile(char* url, char** file, int* sizeoffile);
 void geturl(char* msg, char** url);
 void respond (int sock);
 void getextension(char* url, char** extension);
 
-void sendall(int sock, char* msg) {
-  int length = strlen(msg);
+void sendall(int sock, char* msg, int length) {
   int bytes;
   while(length > 0) {
     /* printf("send bytes : %d\n", bytes); */
@@ -103,31 +102,67 @@ void respond(int sock) {
     }while(bytes > 0);
     char* url;
     char* file;
+    int sizeoffile = 0;
     char* extension;
     geturl(buffer, &url);
-    readfile(url, &file);
-    getextension(url, &extension);
-    printf("%s", extension);
+    readfile(url, &file, &sizeoffile);
+    const char* headers;
+    char* message;
+    int length = 0;
+    // Generate messages
+
+    // If file is found
+    // Include Content-Type header depending on extension
+    // If not
+    // Send 404 header
+    
     if(file)
     {
-      for(int i = 0; i < strlen(file); i++)
+
+      getextension(url, &extension);
+      if(strcmp(extension, "html") == 0)
       {
-        printf("%c", file[i]);
+        headers = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
+      }else if(strcmp(extension, "js") == 0)
+      {
+        headers = "HTTP/1.1 200 OK\r\nContent-Type: application/javascript\r\n\r\n";
+      }else if(strcmp(extension, "css") == 0)
+      {
+        headers = "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\n\r\n";
+      }else if(strcmp(extension, "jpg") == 0)
+      {
+        headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpg\r\n\r\n";
+      } else
+      {
+        headers = "HTTP/1.1 200 OK\r\n\r\n";
       }
+      length = strlen(headers)+sizeoffile+1;
+      message = malloc((length)*sizeof(char));
+      strcpy(message, headers);
+      int i;
+      for(i = strlen(headers); i < length-1; ++i){
+        message[i] = file[i-strlen(headers)];
+      }
+      message[i] = '\0';
+    }else{
+      headers = "HTTP/1.1 404 Not Found\r\n\r\n";
+      length = strlen(headers)+1;
+      message = malloc((length)*sizeof(char));
+      strcpy(message, headers);
     }
-    char* message =  "HTTP/1.1 200 OK\r\nContent-Type: text/html;\r\n\r\n<html><body>Hello World!</body></html\r\n\r\n";
-    sendall(sock, message);
+    printf("%s", extension);
+    sendall(sock, message, length-1);
 }
 
 // Function to read file from url
 // If file not found, returns NULL
 
-void readfile(char* url, char** file){
+void readfile(char* url, char** file, int* sizeoffile){
     char pwd[PATH_MAX];
     getcwd(pwd, sizeof(pwd));
     strcat(pwd, url);
     FILE* fileptr;
-    fileptr = fopen(pwd, "r");
+    fileptr = fopen(pwd, "rb");
     if(!fileptr){
       *file = NULL;
     }else{
@@ -137,6 +172,7 @@ void readfile(char* url, char** file){
       fseek(fileptr, 0L, SEEK_SET);
       fread(*file, 1, size, fileptr);
       strcpy(*file+size+1, "\r\n\r\n");
+      *sizeoffile = size+5;
     }
 }
 
