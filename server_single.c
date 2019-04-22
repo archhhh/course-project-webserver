@@ -90,67 +90,73 @@ int main( int argc, char *argv[] ) {
 }
 
 void respond(int sock) {
-    int offset, bytes;
+    const char* headers;
+    char* url;
+    char* file;
+    char* extension;
+    char* message;
+    int offset, bytes, sizeoffile, length;
     char buffer[9000];
     bzero(buffer, 9000);
     offset = 0;
     bytes = 0;
+    sizeoffile = 0;
+    length = 0;
     do{
       bytes = recv(sock, buffer+offset, 1500, 0);
       offset+=bytes;
       if(strncmp(buffer+offset-4, "\r\n\r\n", 4) == 0) break;
     }while(bytes > 0);
-    char* url;
-    char* file;
-    int sizeoffile = 0;
-    char* extension;
     geturl(buffer, &url);
-    readfile(url, &file, &sizeoffile);
-    const char* headers;
-    char* message;
-    int length = 0;
     // Generate messages
-
-    // If file is found
-    // Include Content-Type header depending on extension
-    // If not
-    // Send 404 header
-    
-    if(file)
+    // If incorrect format of GET Request
+    // Send 400 Status Code
+    if(url == NULL)
     {
-
-      getextension(url, &extension);
-      if(strcmp(extension, "html") == 0)
-      {
-        headers = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
-      }else if(strcmp(extension, "js") == 0)
-      {
-        headers = "HTTP/1.1 200 OK\r\nContent-Type: application/javascript\r\n\r\n";
-      }else if(strcmp(extension, "css") == 0)
-      {
-        headers = "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\n\r\n";
-      }else if(strcmp(extension, "jpg") == 0)
-      {
-        headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpg\r\n\r\n";
-      } else
-      {
-        headers = "HTTP/1.1 200 OK\r\n\r\n";
-      }
-      length = strlen(headers)+sizeoffile+1;
-      message = malloc((length)*sizeof(char));
-      strcpy(message, headers);
-      int i;
-      for(i = strlen(headers); i < length-1; ++i){
-        message[i] = file[i-strlen(headers)];
-      }
-      message[i] = '\0';
-    }else{
-      headers = "HTTP/1.1 404 Not Found\r\n\r\n";
+      headers = "HTTP/1.1 400 Bad Request\r\n\r\n";
       length = strlen(headers)+1;
       message = malloc((length)*sizeof(char));
       strcpy(message, headers);
+    }else{
+      readfile(url, &file, &sizeoffile);
+      // If file is found
+      // Include Content-Type header depending on extension
+      // If not
+      // Send 404 Status Code
+      if(file)
+      {
+        getextension(url, &extension);
+        if(strcmp(extension, "html") == 0)
+        {
+          headers = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
+        }else if(strcmp(extension, "js") == 0)
+        {
+          headers = "HTTP/1.1 200 OK\r\nContent-Type: application/javascript\r\n\r\n";
+        }else if(strcmp(extension, "css") == 0)
+        {
+          headers = "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\n\r\n";
+        }else if(strcmp(extension, "jpg") == 0)
+        {
+          headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpg\r\n\r\n";
+        } else
+        {
+          headers = "HTTP/1.1 200 OK\r\n\r\n";
+        }
+        length = strlen(headers)+sizeoffile+1;
+        message = malloc((length)*sizeof(char));
+        strcpy(message, headers);
+        int i;
+        for(i = strlen(headers); i < length-1; ++i){
+          message[i] = file[i-strlen(headers)];
+        }
+        message[i] = '\0';
+      }else{
+        headers = "HTTP/1.1 404 Not Found\r\n\r\n";
+        length = strlen(headers)+1;
+        message = malloc((length)*sizeof(char));
+        strcpy(message, headers);
+      }
     }
-    printf("%s", extension);
     sendall(sock, message, length-1);
 }
 
@@ -171,8 +177,8 @@ void readfile(char* url, char** file, int* sizeoffile){
       *file = malloc((size+5)*sizeof(char));
       fseek(fileptr, 0L, SEEK_SET);
       fread(*file, 1, size, fileptr);
-      strcpy(*file+size+1, "\r\n\r\n");
-      *sizeoffile = size+5;
+      strcpy(*file+size, "\r\n\r\n");
+      *sizeoffile = size+4;
     }
 }
 
@@ -181,18 +187,32 @@ void readfile(char* url, char** file, int* sizeoffile){
 
 void geturl(char* msg, char** url){
     int length = 0, i = 4;
-    while(i < strlen(msg) && msg[i] != ' ')
+    if(strlen(msg) < 4)
     {
-      ++length;
-      ++i;
-    }
-    if(length == 1){
-      *url = malloc(12*sizeof(char));
-      strcpy(*url, "/index.html");
+      *url = NULL;
     }else{
-      *url = malloc((length+1)*sizeof(char));
-      strncpy(*url, msg+4, length);
+      if(strncmp(msg, "GET", 3) != 0)
+      {
+        *url = NULL;
+      }else{
+        while(i < strlen(msg) && msg[i] != ' ')
+        {
+          ++length;
+          ++i;
+        }
+        if(length <  1)
+        {
+          *url = NULL;
+        }else if(length == 1){
+          *url = malloc(12*sizeof(char));
+          strcpy(*url, "/index.html");
+        }else{
+          *url = malloc((length+1)*sizeof(char));
+          strncpy(*url, msg+4, length);
+        }
+      }
     }
+
 }
 
 // Function to get extension of the requested file
