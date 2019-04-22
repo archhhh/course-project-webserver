@@ -107,6 +107,7 @@ void respond(int sock) {
       offset+=bytes;
       if(strncmp(buffer+offset-4, "\r\n\r\n", 4) == 0) break;
     }while(bytes > 0);
+    printf("%s", buffer);
     geturl(buffer, &url);
     // Generate messages
     // If incorrect format of GET Request
