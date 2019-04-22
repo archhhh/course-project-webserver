@@ -8,11 +8,15 @@
 #include <pthread.h>
 
 #include <string.h>
+#include <assert.h>
 
 #define PORT 5000
 #define PATH_MAX 4096
 
 char *ROOT;
+int client_count = 0;
+pthread_mutex_t lock;
+
 void readfile(char* url, char** file, int* sizeoffile);
 void geturl(char* msg, char** url);
 void* respond (void* sock);
@@ -30,6 +34,8 @@ void sendall(int sock, char* msg, int length) {
 
 
 int main( int argc, char *argv[] ) {
+  int rc = pthread_mutex_init(&lock, NULL);
+  assert(rc == 0);
   int newsockfd;
   int sockfd, portno = PORT;
   socklen_t clilen;
@@ -74,20 +80,26 @@ int main( int argc, char *argv[] ) {
   }
 
   printf("Server is running on port %d\n", portno);
-  //int client_count = 0;
-  while (1) {
-    newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-    if ( newsockfd == -1 ){
-      perror("accept error");
-      exit(1);
-    }
-    printf("%d\n", newsockfd);
-    pthread_t thread_id; 
-    printf("Before Thread\n"); 
-    pthread_create(&thread_id, NULL, respond, (void*)newsockfd);
-    printf("After Thread\n"); 
-    //client_count++;
 
+  while (1) {
+    if(client_count < 50)
+    {
+        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+        if ( newsockfd == -1 ){
+          perror("accept error");
+          exit(1);
+        }
+        pthread_t thread_id; 
+        printf("Before Thread\n"); 
+        rc = pthread_create(&thread_id, NULL, respond, (void*)newsockfd);
+        if(rc == 0)
+        {
+          printf("After Thread\n");
+          pthread_mutex_lock(&lock);
+          client_count++;
+          pthread_mutex_unlock(&lock);
+        }
+    }
   }
 
   return 0;
@@ -111,7 +123,6 @@ void * respond(void * sock) {
       offset+=bytes;
       if(strncmp(buffer+offset-4, "\r\n\r\n", 4) == 0) break;
     }while(bytes > 0);
-    printf("%s\n", buffer);
     geturl(buffer, &url);
     // Generate messages
     // If incorrect format of GET Request
@@ -166,6 +177,9 @@ void * respond(void * sock) {
     printf("close\n");
     shutdown((int)sock, SHUT_RDWR);
     close((int)sock);
+    pthread_mutex_lock(&lock);
+    client_count--;
+    pthread_mutex_unlock(&lock);
     return NULL;
 }
 
