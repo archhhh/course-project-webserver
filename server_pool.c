@@ -67,7 +67,7 @@ int main( int argc, char *argv[] ) {
   serv_addr.sin_port = htons(portno);
 
   /* TODO : Now bind the host address using bind() call.*/
-  if ( bind(sockfd, (str      message[length] = '\0';uct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1 ){
+  if ( bind(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1 ){
     perror("bind error");
     exit(1);
   }
@@ -88,7 +88,7 @@ int main( int argc, char *argv[] ) {
         if ( newsockfd == -1 ){
           perror("accept error");
           exit(1);
-        }      message[length] = '\0';
+        }
         if(thpool_add_work(thpool, respond, (void*)newsockfd) < 0)
         {
           perror("thread error");
