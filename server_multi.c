@@ -90,15 +90,14 @@ int main( int argc, char *argv[] ) {
           exit(1);
         }
         pthread_t thread_id; 
-        printf("Before Thread\n"); 
-        rc = pthread_create(&thread_id, NULL, respond, (void*)newsockfd);
-        if(rc == 0)
+        if(pthread_create(&thread_id, NULL, respond, (void*)newsockfd) < 0)
         {
-          printf("After Thread\n");
-          pthread_mutex_lock(&lock);
-          client_count++;
-          pthread_mutex_unlock(&lock);
+          perror("thread creation error");
+          exit(1);
         }
+        pthread_mutex_lock(&lock);
+        client_count++;
+        pthread_mutex_unlock(&lock);
     }
   }
 
@@ -174,7 +173,6 @@ void * respond(void * sock) {
       }
     }
     sendall((int)sock, message, length-1);
-    printf("close\n");
     shutdown((int)sock, SHUT_RDWR);
     close((int)sock);
     pthread_mutex_lock(&lock);

@@ -8,15 +8,22 @@
 #include <pthread.h>
 #include "threadpool/thpool.h"
 
+
 #include <string.h>
+#include <assert.h>
 
 #define PORT 5000
+#define PATH_MAX 4096
 
 char *ROOT;
-void respond (int sock);
 
-void sendall(int sock, char* msg) {
-  int length = strlen(msg);
+
+void readfile(char* url, char** file, int* sizeoffile);
+void geturl(char* msg, char** url);
+void* respond (void* sock);
+void getextension(char* url, char** extension);
+
+void sendall(int sock, char* msg, int length) {
   int bytes;
   while(length > 0) {
     /* printf("send bytes : %d\n", bytes); */
@@ -25,8 +32,11 @@ void sendall(int sock, char* msg) {
   }
 }
 
+
+
 int main( int argc, char *argv[] ) {
-  int newsockfd[50];
+  threadpool thpool = thpool_init(50);
+  int newsockfd;
   int sockfd, portno = PORT;
   socklen_t clilen;
   struct sockaddr_in serv_addr, cli_addr;
@@ -70,22 +80,169 @@ int main( int argc, char *argv[] ) {
   }
 
   printf("Server is running on port %d\n", portno);
-  int client_count = 0;
+
   while (1) {
-    newsockfd[client_count] = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-    if ( newsockfd[client_count] == -1 ){
-      perror("accept error");
-      exit(1);
+    if(thpool_num_threads_working(thpool) < 50)
+    {
+        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+        if ( newsockfd == -1 ){
+          perror("accept error");
+          exit(1);
+        }
+        if(thpool_add_work(thpool, respond, (void*)newsockfd) < 0)
+        {
+          perror("thread error");
+          exit(1);
+        }
     }
-
-    // TODO : multi threading part
-
-    client_count++;
   }
 
   return 0;
 }
 
-void respond(int sock) {
+void * respond(void * sock) {
+    const char* headers;
+    char* url;
+    char* file;
+    char* extension;
+    char* message;
+    int offset, bytes, sizeoffile, length;
+    char buffer[9000];
+    bzero(buffer, 9000);
+    offset = 0;
+    bytes = 0;
+    sizeoffile = 0;
+    length = 0;
+    do{
+      bytes = recv((int)sock, buffer+offset, 1500, 0);
+      offset+=bytes;
+      if(strncmp(buffer+offset-4, "\r\n\r\n", 4) == 0) break;
+    }while(bytes > 0);
+    geturl(buffer, &url);
+    // Generate messages
+    // If incorrect format of GET Request
+    // Send 400 Status Code
+    if(url == NULL)
+    {
+      headers = "HTTP/1.1 400 Bad Request\r\n\r\n";
+      length = strlen(headers)+1;
+      message = malloc((length)*sizeof(char));
+      strcpy(message, headers);
+    }else{
+      readfile(url, &file, &sizeoffile);
+      // If file is found
+      // Include Content-Type header depending on extension
+      // If not
+      // Send 404 Status Code
+      if(file)
+      {
+        getextension(url, &extension);
+        if(strcmp(extension, "html") == 0)
+        {
+          headers = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n";
+        }else if(strcmp(extension, "js") == 0)
+        {
+          headers = "HTTP/1.1 200 OK\r\nContent-Type: application/javascript\r\n\r\n";
+        }else if(strcmp(extension, "css") == 0)
+        {
+          headers = "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\n\r\n";
+        }else if(strcmp(extension, "jpg") == 0)
+        {
+          headers = "HTTP/1.1 200 OK\r\nContent-Type: image/jpg\r\n\r\n";
+        } else
+        {
+          headers = "HTTP/1.1 200 OK\r\n\r\n";
+        }
+        length = strlen(headers)+sizeoffile+1;
+        message = malloc((length)*sizeof(char));
+        strcpy(message, headers);
+        int i;
+        for(i = strlen(headers); i < length-1; ++i){
+          message[i] = file[i-strlen(headers)];
+        }
+        message[i] = '\0';
+      }else{
+        headers = "HTTP/1.1 404 Not Found\r\n\r\n";
+        length = strlen(headers)+1;
+        message = malloc((length)*sizeof(char));
+        strcpy(message, headers);
+      }
+    }
+    sendall((int)sock, message, length-1);
+    shutdown((int)sock, SHUT_RDWR);
+    close((int)sock);
+    return NULL;
+}
 
+// Function to read file from url
+// If file not found, returns NULL
+
+void readfile(char* url, char** file, int* sizeoffile){
+    char pwd[PATH_MAX];
+    getcwd(pwd, sizeof(pwd));
+    strcat(pwd, url);
+    FILE* fileptr;
+    fileptr = fopen(pwd, "rb");
+    if(!fileptr){
+      *file = NULL;
+    }else{
+      fseek(fileptr, 0L, SEEK_END);
+      int size = ftell(fileptr);
+      *file = malloc((size+5)*sizeof(char));
+      fseek(fileptr, 0L, SEEK_SET);
+      fread(*file, 1, size, fileptr);
+      strcpy(*file+size, "\r\n\r\n");
+      *sizeoffile = size+4;
+    }
+}
+
+// Function to get url of requested file
+// If url is empty, returns "index.html"
+
+void geturl(char* msg, char** url){
+    int length = 0, i = 4;
+    if(strlen(msg) < 4)
+    {
+      *url = NULL;
+    }else{
+      if(strncmp(msg, "GET", 3) != 0)
+      {
+        *url = NULL;
+      }else{
+        while(i < strlen(msg) && msg[i] != ' ')
+        {
+          ++length;
+          ++i;
+        }
+        if(length <  1)
+        {
+          *url = NULL;
+        }else if(length == 1){
+          *url = malloc(12*sizeof(char));
+          strcpy(*url, "/index.html");
+        }else{
+          *url = malloc((length+1)*sizeof(char));
+          strncpy(*url, msg+4, length);
+        }
+      }
+    }
+
+}
+
+// Function to get extension of the requested file
+// Iterates from end of url
+
+void getextension(char* url, char** extension){
+    int i = strlen(url);
+    int length = 0;
+    while(i >= 0 && url[i] != '.'){
+      ++length;
+      --i;
+    }
+    if(i < 0)
+      *extension = NULL;
+    else{
+      *extension = malloc((length)*sizeof(char));
+      strcpy(*extension, url+strlen(url)-length+1);
+    }
 }

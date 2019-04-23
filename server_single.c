@@ -81,9 +81,6 @@ int main( int argc, char *argv[] ) {
       exit(1);
     }
     respond(newsockfd);
-    printf("close\n");
-    shutdown(newsockfd, SHUT_RDWR);
-    close(newsockfd);
   }
 
   return 0;
@@ -107,7 +104,6 @@ void respond(int sock) {
       offset+=bytes;
       if(strncmp(buffer+offset-4, "\r\n\r\n", 4) == 0) break;
     }while(bytes > 0);
-    printf("%s", buffer);
     geturl(buffer, &url);
     // Generate messages
     // If incorrect format of GET Request
@@ -159,6 +155,8 @@ void respond(int sock) {
       }
     }
     sendall(sock, message, length-1);
+    shutdown(sock, SHUT_RDWR);
+    close(sock);
 }
 
 // Function to read file from url
