@@ -12,7 +12,7 @@
 #include <string.h>
 #include <assert.h>
 
-#define PORT 5000
+#define PORT 5002
 #define PATH_MAX 4096
 
 char *ROOT;
@@ -128,6 +128,7 @@ void * respond(void * sock) {
       length = strlen(headers)+1;
       message = malloc((length)*sizeof(char));
       strcpy(message, headers);
+      message[length] = '\0';
     }else{
       readfile(url, &file, &sizeoffile);
       // If file is found
@@ -166,6 +167,7 @@ void * respond(void * sock) {
         length = strlen(headers)+1;
         message = malloc((length)*sizeof(char));
         strcpy(message, headers);
+        message[length] = '\0';
       }
     }
     sendall((int)sock, message, length-1);
@@ -193,7 +195,9 @@ void readfile(char* url, char** file, int* sizeoffile){
       fread(*file, 1, size, fileptr);
       strcpy(*file+size, "\r\n\r\n");
       *sizeoffile = size+4;
+      fclose(fileptr);
     }
+
 }
 
 // Function to get url of requested file
@@ -220,10 +224,14 @@ void geturl(char* msg, char** url){
         }else if(length == 1){
           *url = malloc(12*sizeof(char));
           strcpy(*url, "/index.html");
+          *(*url+11)='\0';
+
         }else{
           *url = malloc((length+1)*sizeof(char));
           strncpy(*url, msg+4, length);
+          *(*url+length)='\0';
         }
+        
       }
     }
 
