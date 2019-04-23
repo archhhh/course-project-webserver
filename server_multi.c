@@ -10,7 +10,7 @@
 #include <string.h>
 #include <assert.h>
 
-#define PORT 5001
+#define PORT 5000
 #define PATH_MAX 4096
 
 char *ROOT;
